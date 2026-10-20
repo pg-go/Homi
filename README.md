@@ -11,6 +11,20 @@
 
 透明代理由配置文件决定：在配置里开启 `tun`，局域网流量即经 Mihomo 转发。
 
+## 界面预览
+
+基本设置：版本、状态、选择配置、启用与服务操作
+
+![基本设置](docs/images/screenshot-basic.png)
+
+配置文件：配置列表、上传校验、在线编辑
+
+![配置文件](docs/images/screenshot-config.png)
+
+日志：插件日志与内核日志
+
+![日志](docs/images/screenshot-logs.png)
+
 ## 一键安装
 
 ```sh
