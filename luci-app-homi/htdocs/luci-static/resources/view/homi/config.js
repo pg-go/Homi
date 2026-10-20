@@ -79,8 +79,8 @@ return view.extend({
 				editorSel.appendChild(opt);
 			});
 		};
-		const editorSave = E('button', { 'class': 'btn cbi-button cbi-button-save', type: 'button', style: 'margin-top:6px;' }, _('保存'));
-		const editorSaveApply = E('button', { 'class': 'btn cbi-button cbi-button-apply', type: 'button', style: 'margin-top:6px; margin-left:8px;' }, _('保存并应用'));
+		const editorSave = E('button', { 'class': 'btn cbi-button cbi-button-save', type: 'button' }, _('保存'));
+		const editorSaveApply = E('button', { 'class': 'btn cbi-button cbi-button-apply', type: 'button' }, _('保存并应用'));
 		const doSave = function (apply) {
 			if (!editorPath) {
 				notify(_('请先选择一个配置文件'), 'error');
@@ -109,7 +109,7 @@ return view.extend({
 		const editorCard = wrap(_('在线编辑'), E('div', {}, [
 			line(_('选择文件'), editorSel),
 			editorArea,
-			E('div', {}, [editorSave, editorSaveApply])
+			E('div', { style: 'display:flex; gap:8px; align-items:center; margin-top:6px;' }, [editorSave, editorSaveApply])
 		]));
 
 		/* ---------- 配置列表 ---------- */
