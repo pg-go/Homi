@@ -20,7 +20,7 @@ endef
 
 define Package/homi/description
   Procd service, UCI config and helper scripts to run the Mihomo
-  core with a user-uploaded config file. No transparent proxy.
+  core with a user-uploaded config file as a transparent proxy.
 endef
 
 define Package/homi/conffiles
