@@ -1,0 +1,1 @@
+{"luci-app-homi":{"description":"Grant access to Homi procedures","read":{"file":{"/etc/homi/*.yaml":["read"],"/etc/homi/*.yml":["read"],"/var/log/homi/*.log":["read"]},"ubus":{"luci.homi":["*"],"rc":["*"]},"uci":["homi"]},"write":{"file":{"/etc/homi/*.yaml":["write"],"/etc/homi/*.yml":["write"],"/var/log/homi/*.log":["write"]},"ubus":{"luci.homi":["*"]},"uci":["homi"]}}}

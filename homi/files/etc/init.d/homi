@@ -1,0 +1,80 @@
+#!/bin/sh /etc/rc.common
+#
+# Homi: 只用 Mihomo 内核跑用户自己的配置
+#
+
+USE_PROCD=1
+START=99
+STOP=10
+
+APP_NAME=homi
+HOME_DIR=/etc/homi
+MIHOMO_BIN=/usr/bin/mihomo
+CORE_LOG=/var/log/homi/core.log
+MAX_LINES=500
+
+plog() {
+	/usr/sbin/homi-log "$1" 2>/dev/null
+}
+
+trim_log() {
+	[ -f "$1" ] || return 0
+	local lines=$(wc -l < "$1" 2>/dev/null || echo 0)
+	if [ "$lines" -gt "$MAX_LINES" ]; then
+		tail -n "$MAX_LINES" "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+	fi
+}
+
+validate_config() {
+	local cfg="$1"
+	[ -n "$cfg" ] && [ -f "$cfg" ] || return 1
+	"$MIHOMO_BIN" -t -d "$HOME_DIR" -f "$cfg" >/dev/null 2>&1
+}
+
+start_service() {
+	local enabled config_file
+	config_load "$APP_NAME"
+	config_get_bool enabled main enabled 0
+	config_get config_file main config_file "$HOME_DIR/config.yaml"
+
+	if [ "$enabled" != "1" ]; then
+		echo "$APP_NAME is disabled, skip starting" >&2
+		return 1
+	fi
+
+	if ! validate_config "$config_file"; then
+		plog "[App] 配置校验失败，拒绝启动: $config_file"
+		echo "invalid or missing config: $config_file" >&2
+		echo "请在 LuCI -> 服务 -> Homi 上传有效的配置文件" >&2
+		return 1
+	fi
+
+	mkdir -p "$(dirname "$CORE_LOG")"
+	trim_log "$CORE_LOG"
+	echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Core] ===== 启动，配置文件: $config_file =====" >> "$CORE_LOG"
+
+	plog "[App] 启动，配置文件: $(basename "$config_file")"
+
+	procd_open_instance "$APP_NAME"
+	# exec 替换 shell，procd 能正确跟踪 mihomo 进程；输出写入内核日志
+	procd_set_param command /bin/sh -c "exec \"$MIHOMO_BIN\" -d \"$HOME_DIR\" -f \"$config_file\" >>\"$CORE_LOG\" 2>&1"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 0
+	procd_set_param stderr 0
+	procd_close_instance
+}
+
+reload_service() {
+	# Mihomo 没有可靠的 SIGHUP 热重载，重载即重启
+	plog "[App] 重载服务"
+	restart "$@"
+}
+
+stop_service() {
+	plog "[App] 停止服务"
+	trim_log "$CORE_LOG"
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$APP_NAME"
+}

@@ -1,0 +1,35 @@
+# Homi 配置示例
+# 上传位置：/etc/homi/config.yaml（在 LuCI -> 服务 -> Homi 页面上传）
+#
+# 想用「打开面板」按钮，下面三项建议打开：
+#   external-controller: 0.0.0.0:9090
+#   secret: "面板密码，可留空"
+#   external-ui: ui   # 面板目录，点「更新面板」会自动下载到 /etc/homi/ui
+
+mixed-port: 7890
+allow-lan: true
+mode: rule
+log-level: info
+
+# 面板 API（「打开面板」按钮需要这一项）
+external-controller: 0.0.0.0:9090
+# secret: "change-me"
+external-ui: ui
+
+proxies:
+  # - name: "示例节点"
+  #   type: ss
+  #   server: 1.2.3.4
+  #   port: 8388
+  #   cipher: aes-256-gcm
+  #   password: "password"
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - DIRECT
+      # - 示例节点
+
+rules:
+  - MATCH,PROXY

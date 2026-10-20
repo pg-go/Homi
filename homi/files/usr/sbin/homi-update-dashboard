@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# 下载最新 zashboard 面板到 /etc/homi/ui
+# 供 LuCI「更新面板」按钮调用
+#
+
+set -e
+
+UI_DIR=/etc/homi/ui
+URL="https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+echo "下载面板 $URL ..."
+if command -v curl >/dev/null 2>&1; then
+	curl -fsSL -o "$TMPDIR/ui.zip" "$URL"
+else
+	wget -O "$TMPDIR/ui.zip" "$URL"
+fi
+
+rm -rf "$UI_DIR"
+mkdir -p "$UI_DIR"
+unzip -q -o "$TMPDIR/ui.zip" -d "$UI_DIR"
+
+echo "面板已更新到 $UI_DIR"

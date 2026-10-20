@@ -1,0 +1,13 @@
+#!/bin/sh
+# homi-log: 写插件日志，自动只保留最后 500 行
+# 用法: homi-log "消息"
+PLUGIN_LOG=/var/log/homi/app.log
+MAX_LINES=500
+
+mkdir -p "$(dirname "$PLUGIN_LOG")"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$PLUGIN_LOG"
+
+lines=$(wc -l < "$PLUGIN_LOG" 2>/dev/null || echo 0)
+if [ "$lines" -gt "$MAX_LINES" ]; then
+	tail -n "$MAX_LINES" "$PLUGIN_LOG" > "$PLUGIN_LOG.tmp" && mv "$PLUGIN_LOG.tmp" "$PLUGIN_LOG"
+fi

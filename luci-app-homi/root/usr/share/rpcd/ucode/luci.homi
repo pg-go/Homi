@@ -1,0 +1,156 @@
+#!/usr/bin/ucode
+
+'use strict';
+
+import { popen } from 'fs';
+
+const home_dir = '/etc/homi';
+const default_config = home_dir + '/config.yaml';
+
+/* 从 UCI 读取当前生效的配置文件路径 */
+function active_config() {
+	let cfg = default_config;
+	const process = popen("uci -q get homi.main.config_file 2>/dev/null");
+	if (process) {
+		const out = trim(process.read('all'));
+		process.close();
+		if (length(out) > 0)
+			cfg = out;
+	}
+	return cfg;
+}
+
+const methods = {
+	version: {
+		call: function() {
+			let process;
+			let app = '';
+			if (system('command -v opkg') == 0) {
+				process = popen('opkg list-installed luci-app-homi 2>/dev/null | cut -d " " -f 3');
+				if (process) {
+					app = trim(process.read('all'));
+					process.close();
+				}
+			} else if (system('command -v apk') == 0) {
+				process = popen('apk list -I luci-app-homi 2>/dev/null | cut -d " " -f 1 | cut -d "-" -f 4');
+				if (process) {
+					app = trim(process.read('all'));
+					process.close();
+				}
+			}
+			let core = '';
+			process = popen('mihomo -v 2>/dev/null | grep -i mihomo | cut -d " " -f 3');
+			if (process) {
+				core = trim(process.read('all'));
+				process.close();
+			}
+			return { app: app, core: core, config: active_config() };
+		}
+	},
+	test_config: {
+		args: { path: '' },
+		call: function(req) {
+			const cfg = req.args?.path ?? active_config();
+			/* 只允许 home_dir 下的文件，防止路径穿越 */
+			if (index(cfg, home_dir + '/') != 0) {
+				system(`/usr/sbin/homi-log '[App] 校验拒绝：非法路径' 2>/dev/null`);
+				return { success: false, error: 'invalid_path' };
+			}
+			/* shell 单引号转义防注入 */
+			const esc = replace(cfg, "'", "'\\''");
+			const ok = system(`/usr/bin/mihomo -t -d '${home_dir}' -f '${esc}' >/dev/null 2>&1`) == 0;
+			if (!ok)
+				system(`/usr/sbin/homi-log '[App] 校验失败：${esc}' 2>/dev/null`);
+			return { success: ok };
+		}
+	},
+	set_config: {
+		args: { path: '' },
+		call: function(req) {
+			const cfg = req.args?.path ?? '';
+			if (index(cfg, home_dir + '/') != 0)
+				return { success: false, error: 'invalid_path' };
+			const esc = replace(cfg, "'", "'\\''");
+			const ok = system(`uci set homi.main.config_file='${esc}' && uci commit homi`) == 0;
+			return { success: ok };
+		}
+	},
+	list_configs: {
+		call: function() {
+			const active = active_config();
+			const files = [];
+			const process = popen(`ls -1 '${home_dir}' 2>/dev/null`);
+			if (process) {
+				const out = process.read('all');
+				process.close();
+				const names = split(trim(out), '\n');
+				for (let i = 0; i < length(names); i++) {
+					const name = trim(names[i]);
+					if (length(name) == 0)
+						continue;
+					const lower = lc(name);
+					if (substr(lower, length(lower) - 5) == '.yaml' || substr(lower, length(lower) - 4) == '.yml')
+						push(files, { name: name, path: home_dir + '/' + name, active: (home_dir + '/' + name) == active });
+				}
+			}
+			return { configs: files, active: active };
+		}
+	},
+	delete_config: {
+		args: { path: '' },
+		call: function(req) {
+			const cfg = req.args?.path ?? '';
+			if (index(cfg, home_dir + '/') != 0)
+				return { success: false, error: 'invalid_path' };
+			if (cfg == active_config())
+				return { success: false, error: 'is_active' };
+			const esc = replace(cfg, "'", "'\\''");
+			const ok = system(`rm -f '${esc}'`) == 0;
+			return { success: ok };
+		}
+	},
+	dashboard: {
+		call: function() {
+			const config_path = active_config();
+			let cfg = {};
+			const process = popen(`yq -o=json '.' '${config_path}' 2>/dev/null`);
+			if (process) {
+				const out = process.read('all');
+				process.close();
+				try {
+					cfg = json(out);
+				} catch (e) {
+					cfg = {};
+				}
+			}
+			const ctl = cfg['external-controller'];
+			const ctl_tls = cfg['external-controller-tls'];
+			if (!ctl && !ctl_tls) {
+				return { error: 'not_configured' };
+			}
+			return {
+				controller: ctl_tls ?? ctl,
+				tls: ctl_tls ? true : false,
+				secret: cfg['secret'] ?? '',
+				ui: cfg['external-ui'] ?? ''
+			};
+		}
+	},
+	update_dashboard: {
+		call: function() {
+			const ok = system('/usr/sbin/homi-update-dashboard >/dev/null 2>&1') == 0;
+			return { success: ok };
+		}
+	},
+	log_msg: {
+		args: { msg: '' },
+		call: function(req) {
+			const msg = req.args?.msg ?? '';
+			const esc = replace(msg, "'", "'\\''");
+			system(`/usr/sbin/homi-log '${esc}' 2>/dev/null`);
+			return { success: true };
+		}
+	}
+};
+
+return { 'luci.homi': methods };
