@@ -17,7 +17,20 @@ return view.extend({
 
 		const getFn = () => (logType === 'core' ? homi.getCoreLog() : homi.getAppLog());
 		const showText = function (text) {
-			logPre.textContent = text || _('（空）');
+			logPre.textContent = '';
+			const lines = (text || '').split('\n');
+			/* 去掉末尾空行造成的空白行 */
+			while (lines.length && !lines[lines.length - 1]) lines.pop();
+			if (!lines.length) {
+				logPre.textContent = _('（空）');
+			} else {
+				lines.forEach((ln, i) => {
+					logPre.appendChild(E('div', {
+						style: 'border-bottom: 1px solid #222; padding: 2px 0; word-break: break-all;' +
+							(i % 2 ? 'background: #161616;' : '')
+					}, ln || ' '));
+				});
+			}
 			logPre.scrollTop = logPre.scrollHeight;
 		};
 
