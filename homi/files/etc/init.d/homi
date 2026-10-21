@@ -22,6 +22,7 @@ trim_log() {
 	local lines=$(wc -l < "$1" 2>/dev/null || echo 0)
 	if [ "$lines" -gt "$MAX_LINES" ]; then
 		tail -n "$MAX_LINES" "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+		plog "[App] 日志已裁剪，仅保留最后 $MAX_LINES 行: $1"
 	fi
 }
 
@@ -43,17 +44,16 @@ start_service() {
 	fi
 
 	if ! validate_config "$config_file"; then
-		plog "[App] 配置校验失败，拒绝启动: $config_file"
+		plog "[App] 配置校验失败，拒绝启动: $(basename "$config_file")"
 		echo "invalid or missing config: $config_file" >&2
 		echo "请在 LuCI -> 服务 -> Homi 上传有效的配置文件" >&2
 		return 1
 	fi
+	plog "[App] 配置校验通过: $(basename "$config_file")"
 
 	mkdir -p "$(dirname "$CORE_LOG")"
 	trim_log "$CORE_LOG"
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Core] ===== 启动，配置文件: $config_file =====" >> "$CORE_LOG"
-
-	plog "[App] 启动，配置文件: $(basename "$config_file")"
 
 	procd_open_instance "$APP_NAME"
 	# exec 替换 shell，procd 能正确跟踪 mihomo 进程；输出写入内核日志
@@ -62,6 +62,7 @@ start_service() {
 	procd_set_param stdout 0
 	procd_set_param stderr 0
 	procd_close_instance
+	plog "[App] 内核已启动"
 }
 
 reload_service() {
