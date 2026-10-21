@@ -21,6 +21,22 @@ fi
 
 rm -rf "$UI_DIR"
 mkdir -p "$UI_DIR"
-unzip -q -o "$TMPDIR/ui.zip" -d "$UI_DIR"
+unzip -q -o "$TMPDIR/ui.zip" -d "$TMPDIR/x"
+
+# zashboard 的 dist.zip 顶层目录名不固定（见过 zashboard/、dist/），展平一层，
+# 保证 index.html 直接落在 $UI_DIR 下，「打开面板」一点即达，不用再点子目录
+# （注意：赋值语句不做 glob 展开，所以用 for 循环取子目录名）
+inner="$TMPDIR/x"
+if [ "$(ls -A "$inner" | wc -l)" -eq 1 ]; then
+	for d in "$inner"/*; do
+		[ -d "$d" ] && inner="$d"
+	done
+fi
+for f in "$inner"/*; do
+	[ -e "$f" ] && mv "$f" "$UI_DIR"/
+done
+for f in "$inner"/.[!.]*; do
+	[ -e "$f" ] && mv "$f" "$UI_DIR"/
+done
 
 echo "面板已更新到 $UI_DIR"
