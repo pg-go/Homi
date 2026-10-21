@@ -1,0 +1,36 @@
+name: build-test
+
+# 手动触发：只编译 aarch64_cortex-a53 的 ipk，用于快速验证
+on:
+  workflow_dispatch:
+
+env:
+  FEEDNAME: homi
+
+jobs:
+  build-test:
+    name: test aarch64_cortex-a53 ipk
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: build
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: aarch64_cortex-a53-openwrt-24.10
+          FEEDNAME: homi
+          PACKAGES: homi luci-app-homi
+          NO_REFRESH_CHECK: true
+
+      - name: bundle
+        run: |
+          tar -c -z -f "homi-aarch64_cortex-a53-ipk.tar.gz" \
+            -C "bin/packages/aarch64_cortex-a53/homi" .
+          tar -tzf "homi-aarch64_cortex-a53-ipk.tar.gz"
+
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-test-a53-ipk
+          path: homi-aarch64_cortex-a53-ipk.tar.gz
