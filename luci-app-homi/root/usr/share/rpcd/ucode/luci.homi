@@ -77,15 +77,21 @@ function clear_sub_urls() {
 	return system(cmd) == 0;
 }
 
-/* 调生成脚本重建 subscription.yaml 并设为正使用配置 */
+/* 调生成脚本重建 subscription.yaml 并设为正使用配置。
+   注意：经 connector 推到 GitHub 的文件可执行位会丢失（全是 100644），
+   luci.mk 的 root/ 又是按 git mode 原样安装，所以这里走 /bin/sh 调用，
+   不依赖脚本本身的 +x。 */
 function regen_subscription(urls) {
 	if (length(urls) == 0)
 		return false;
-	let cmd = "/usr/sbin/homi-gen-subscription";
+	let cmd = "/bin/sh /usr/sbin/homi-gen-subscription";
 	for (let i = 0; i < length(urls); i++)
 		cmd += ` '${replace(urls[i], "'", "'\\''")}'`;
-	if (system(cmd + " >/dev/null 2>&1") != 0)
+	const rc = system(cmd + " >/dev/null 2>&1");
+	if (rc != 0) {
+		system(`/usr/sbin/homi-log "[App] 订阅生成脚本异常退出，退出码: ${rc}" 2>/dev/null`);
 		return false;
+	}
 	return system(`uci set homi.main.config_file='${sub_config}'; uci commit homi`) == 0;
 }
 

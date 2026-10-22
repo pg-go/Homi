@@ -8,9 +8,11 @@ OUT=/etc/homi/subscription.yaml
 TMP="$OUT.tmp"
 PROV="$OUT.providers.tmp"
 
-[ $# -ge 1 ] || exit 1
-[ -f "$TEMPLATE" ] || exit 1
-grep -q '订阅URL' "$TEMPLATE" || exit 1
+fail() { /usr/sbin/homi-log "[App] 订阅配置生成失败：$1" 2>/dev/null; exit "$2"; }
+
+[ $# -ge 1 ] || fail "无订阅地址" 1
+[ -f "$TEMPLATE" ] || fail "内置模板缺失" 1
+grep -q '订阅URL' "$TEMPLATE" || fail "模板占位符缺失" 1
 
 : > "$PROV" || exit 1
 i=0
@@ -18,7 +20,7 @@ for u in "$@"; do
 	i=$((i + 1))
 	case "$u" in
 		http://*|https://*) ;;
-		*) rm -f "$PROV"; exit 1 ;;
+		*) rm -f "$PROV"; fail "地址不合法" 1 ;;
 	esac
 	printf '  SUB%d: {<<: *P, url: "%s"}\n' "$i" "$u" >> "$PROV" || { rm -f "$PROV"; exit 1; }
 done
@@ -27,6 +29,6 @@ done
 sed -e "/订阅URL/r $PROV" -e "/订阅URL/d" "$TEMPLATE" > "$TMP" || { rm -f "$TMP" "$PROV"; exit 1; }
 rm -f "$PROV"
 
-/usr/bin/mihomo -t -d /etc/homi -f "$TMP" >/dev/null 2>&1 || { rm -f "$TMP"; exit 2; }
+/usr/bin/mihomo -t -d /etc/homi -f "$TMP" >/dev/null 2>&1 || { rm -f "$TMP"; fail "生成配置未通过校验" 2; }
 mv "$TMP" "$OUT"
 exit 0
