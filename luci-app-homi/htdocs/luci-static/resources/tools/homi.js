@@ -76,6 +76,25 @@ const callLogMsg = rpc.declare({
     expect: { '': {} }
 });
 
+const callGetSubscription = rpc.declare({
+    object: 'luci.homi',
+    method: 'get_subscription',
+    expect: { '': {} }
+});
+
+const callSetSubscription = rpc.declare({
+    object: 'luci.homi',
+    method: 'set_subscription',
+    params: ['url'],
+    expect: { '': {} }
+});
+
+const callDeleteSubscription = rpc.declare({
+    object: 'luci.homi',
+    method: 'delete_subscription',
+    expect: { '': {} }
+});
+
 const configPath = '/etc/homi/config.yaml';
 const appLogPath = '/var/log/homi/app.log';
 const coreLogPath = '/var/log/homi/core.log';
@@ -206,6 +225,18 @@ return baseclass.extend({
 
     logMsg: function (msg) {
         return callLogMsg(msg);
+    },
+
+    getSubscription: function () {
+        return callGetSubscription();
+    },
+
+    setSubscription: function (url) {
+        return callSetSubscription(url);
+    },
+
+    deleteSubscription: function () {
+        return callDeleteSubscription();
     },
 
     openDashboard: async function () {

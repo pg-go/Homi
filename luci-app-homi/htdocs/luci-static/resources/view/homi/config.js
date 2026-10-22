@@ -41,6 +41,62 @@ return view.extend({
 		};
 		const nameOf = function (p) { return p ? p.split('/').pop() : _('未设置'); };
 
+		/* ---------- 订阅管理（内置模板 + 填订阅地址即用） ---------- */
+		const subInput = E('input', {
+			'class': 'cbi-input-text', type: 'text',
+			style: 'width:100%; max-width:520px;',
+			placeholder: 'https://…'
+		});
+		const subStatus = E('div', { style: 'margin:2px 0 6px; font-size:12px; color:#555;' });
+		let subUrl = '';
+		let subActive = false;
+		const subDelBtn = smallBtn(_('删除订阅'), 'cbi-button-negative', function () {
+			if (!subUrl) return;
+			if (!confirm(_('确定删除订阅地址吗？') + (subActive ? _('正使用的订阅配置将失效，服务会停止。') : ''))) return;
+			homi.deleteSubscription()
+				.then((r) => {
+					if (r && r.success) {
+						notify(r.stopped ? _('订阅已删除，服务已停止。') : _('订阅已删除。'));
+						return refreshAll().then(refreshSub);
+					}
+					notify(_('删除失败'), 'error');
+				})
+				.catch((e) => notify(_('删除失败：') + ((e && e.message) || e), 'error'));
+		});
+		const refreshSub = function () {
+			return L.resolveDefault(homi.getSubscription(), { url: '', active: false }).then((d) => {
+				subUrl = (d && d.url) || '';
+				subActive = !!(d && d.active);
+				subInput.value = subUrl;
+				subStatus.textContent = subUrl
+					? (subActive ? _('当前订阅已设为正使用配置') : _('已保存订阅地址，但正使用的不是订阅配置'))
+					: _('未设置订阅地址，填入后自动生成配置并启用');
+				subDelBtn.style.display = subUrl ? '' : 'none';
+			});
+		};
+		const subSaveBtn = smallBtn(_('保存并应用'), 'cbi-button-action', function () {
+			const url = subInput.value.trim();
+			if (!url) {
+				notify(_('请填写订阅地址'), 'error');
+				return;
+			}
+			homi.setSubscription(url)
+				.then((r) => {
+					if (r && r.success) {
+						homi.logMsg('[App] 订阅已保存并设为正使用配置（已重载服务）');
+						notify(_('订阅已保存，正在重载服务…'));
+						return homi.reload().catch(() => {}).then(() => refreshAll().then(refreshSub));
+					}
+					const detail = (r && r.error === 'invalid_url') ? _('（地址格式不正确）') : '';
+					notify(_('保存失败') + detail, 'error');
+				})
+				.catch((e) => notify(_('保存失败：') + ((e && e.message) || e), 'error'));
+		});
+		const subCard = wrap(_('订阅管理'), E('div', {}, [
+			subStatus,
+			line(_('订阅地址'), E('div', { style: 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;' }, [subInput, subSaveBtn, subDelBtn]))
+		]));
+
 		/* ---------- 在线编辑（先建，列表的编辑按钮要调用） ---------- */
 		const editorSel = E('select', { 'class': 'cbi-input-select', style: 'min-width:180px;' });
 		const editorArea = E('textarea', {
@@ -127,7 +183,8 @@ return view.extend({
 				const isActive = c.path === activePath;
 				const rowEl = E('div', { style: 'display:flex; align-items:center; gap:6px; padding:1px 0;' }, [
 					E('code', {}, c.name),
-					isActive ? E('span', { style: 'color:green; font-size:12px;' }, _('（正使用）')) : E('span', {}, '')
+					isActive ? E('span', { style: 'color:green; font-size:12px;' }, _('（正使用）')) : E('span', {}, ''),
+					c.name === 'subscription.yaml' ? E('span', { style: 'color:#888; font-size:12px;' }, _('（订阅生成）')) : E('span', {}, '')
 				]);
 				if (!isActive) {
 					rowEl.appendChild(smallBtn(_('删除'), 'cbi-button-negative', function () {
@@ -195,9 +252,11 @@ return view.extend({
 
 		renderList();
 		refreshEditorOptions();
+		refreshSub();
 
 		return E('div', {}, [
 			E('h2', { style: 'margin:6px 0;' }, _('配置文件')),
+			subCard,
 			listCard,
 			uploadCard,
 			editorCard
