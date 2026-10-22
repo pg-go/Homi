@@ -76,22 +76,30 @@ const callLogMsg = rpc.declare({
     expect: { '': {} }
 });
 
-const callGetSubscription = rpc.declare({
+const callGetSubscriptions = rpc.declare({
     object: 'luci.homi',
-    method: 'get_subscription',
+    method: 'get_subscriptions',
     expect: { '': {} }
 });
 
-const callSetSubscription = rpc.declare({
+const callAddSubscription = rpc.declare({
     object: 'luci.homi',
-    method: 'set_subscription',
+    method: 'add_subscription',
     params: ['url'],
     expect: { '': {} }
 });
 
-const callDeleteSubscription = rpc.declare({
+const callUpdateSubscription = rpc.declare({
     object: 'luci.homi',
-    method: 'delete_subscription',
+    method: 'update_subscription',
+    params: ['index', 'url'],
+    expect: { '': {} }
+});
+
+const callRemoveSubscription = rpc.declare({
+    object: 'luci.homi',
+    method: 'remove_subscription',
+    params: ['index'],
     expect: { '': {} }
 });
 
@@ -227,16 +235,20 @@ return baseclass.extend({
         return callLogMsg(msg);
     },
 
-    getSubscription: function () {
-        return callGetSubscription();
+    getSubscriptions: function () {
+        return callGetSubscriptions();
     },
 
-    setSubscription: function (url) {
-        return callSetSubscription(url);
+    addSubscription: function (url) {
+        return callAddSubscription(url);
     },
 
-    deleteSubscription: function () {
-        return callDeleteSubscription();
+    updateSubscription: function (index, url) {
+        return callUpdateSubscription(index, url);
+    },
+
+    removeSubscription: function (index) {
+        return callRemoveSubscription(index);
     },
 
     openDashboard: async function () {

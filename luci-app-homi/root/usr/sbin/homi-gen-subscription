@@ -1,0 +1,32 @@
+#!/bin/sh
+# homi-gen-subscription: 根据传入的订阅地址列表，从内置模板生成 /etc/homi/subscription.yaml
+# 用法: homi-gen-subscription <url1> [url2 ...]
+# 返回: 0 成功；1 参数/模板错误；2 生成配置校验失败
+
+TEMPLATE=/usr/share/homi/builtin.yaml
+OUT=/etc/homi/subscription.yaml
+TMP="$OUT.tmp"
+PROV="$OUT.providers.tmp"
+
+[ $# -ge 1 ] || exit 1
+[ -f "$TEMPLATE" ] || exit 1
+grep -q '订阅URL' "$TEMPLATE" || exit 1
+
+: > "$PROV" || exit 1
+i=0
+for u in "$@"; do
+	i=$((i + 1))
+	case "$u" in
+		http://*|https://*) ;;
+		*) rm -f "$PROV"; exit 1 ;;
+	esac
+	printf '  SUB%d: {<<: *P, url: "%s"}\n' "$i" "$u" >> "$PROV" || { rm -f "$PROV"; exit 1; }
+done
+
+# 模板中的占位行替换为 N 个 provider
+sed -e "/订阅URL/r $PROV" -e "/订阅URL/d" "$TEMPLATE" > "$TMP" || { rm -f "$TMP" "$PROV"; exit 1; }
+rm -f "$PROV"
+
+/usr/bin/mihomo -t -d /etc/homi -f "$TMP" >/dev/null 2>&1 || { rm -f "$TMP"; exit 2; }
+mv "$TMP" "$OUT"
+exit 0

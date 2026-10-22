@@ -6,7 +6,6 @@ import { popen } from 'fs';
 
 const home_dir = '/etc/homi';
 const default_config = home_dir + '/config.yaml';
-const builtin_template = '/usr/share/homi/builtin.yaml';
 const sub_config = home_dir + '/subscription.yaml';
 
 /* 订阅地址合法性：http/https 开头，不含空白、引号及 shell 元字符（& 允许，sed 时转义） */
@@ -25,15 +24,69 @@ function valid_sub_url(url) {
 	return true;
 }
 
-/* 读 UCI 中的订阅地址 */
-function sub_url() {
-	let url = '';
-	const process = popen("uci -q get homi.main.subscription_url 2>/dev/null");
+/* 读 UCI 中的订阅地址列表（sub_count + sub_url_N），兼容 r4 的单 subscription_url */
+function sub_urls() {
+	const urls = [];
+	let n = -1;
+	let process = popen("uci -q get homi.main.sub_count 2>/dev/null");
 	if (process) {
-		url = trim(process.read('all'));
+		const s = trim(process.read('all'));
 		process.close();
+		if (length(s) > 0)
+			n = int(s);
 	}
-	return url;
+	if (n < 0) {
+		process = popen("uci -q get homi.main.subscription_url 2>/dev/null");
+		if (process) {
+			const old = trim(process.read('all'));
+			process.close();
+			if (length(old) > 0)
+				push(urls, old);
+		}
+		return urls;
+	}
+	for (let i = 1; i <= n; i++) {
+		process = popen(`uci -q get homi.main.sub_url_${i} 2>/dev/null`);
+		if (!process)
+			continue;
+		const u = trim(process.read('all'));
+		process.close();
+		if (length(u) > 0)
+			push(urls, u);
+	}
+	return urls;
+}
+
+/* 写回订阅列表（同时清掉 r4 旧字段与超长序号残留） */
+function save_sub_urls(urls) {
+	let cmd = "uci -q delete homi.main.subscription_url; ";
+	cmd += `uci set homi.main.sub_count='${length(urls)}'; `;
+	for (let i = 1; i <= length(urls); i++)
+		cmd += `uci set homi.main.sub_url_${i}='${replace(urls[i - 1], "'", "'\\''")}'; `;
+	for (let i = length(urls) + 1; i <= 32; i++)
+		cmd += `uci -q delete homi.main.sub_url_${i}; `;
+	cmd += "uci commit homi";
+	return system(cmd) == 0;
+}
+
+function clear_sub_urls() {
+	let cmd = "uci -q delete homi.main.subscription_url; uci -q delete homi.main.sub_count; ";
+	for (let i = 1; i <= 32; i++)
+		cmd += `uci -q delete homi.main.sub_url_${i}; `;
+	cmd += "uci commit homi";
+	return system(cmd) == 0;
+}
+
+/* 调生成脚本重建 subscription.yaml 并设为正使用配置 */
+function regen_subscription(urls) {
+	if (length(urls) == 0)
+		return false;
+	let cmd = "/usr/sbin/homi-gen-subscription";
+	for (let i = 0; i < length(urls); i++)
+		cmd += ` '${replace(urls[i], "'", "'\\''")}'`;
+	if (system(cmd + " >/dev/null 2>&1") != 0)
+		return false;
+	return system(`uci set homi.main.config_file='${sub_config}'; uci commit homi`) == 0;
 }
 
 /* 从 UCI 读取当前生效的配置文件路径 */
@@ -180,14 +233,13 @@ const methods = {
 			return { success: true };
 		}
 	},
-	get_subscription: {
+	get_subscriptions: {
 		call: function() {
-			const url = sub_url();
-			const exists = length(url) > 0 && system(`test -f '${sub_config}'`) == 0;
-			return { url: url, active: exists && active_config() == sub_config };
+			const urls = sub_urls();
+			return { urls: urls, active: length(urls) > 0 && active_config() == sub_config };
 		}
 	},
-	set_subscription: {
+	add_subscription: {
 		args: { url: '' },
 		call: function(req) {
 			const url = trim(req.args?.url ?? '');
@@ -195,42 +247,78 @@ const methods = {
 				system(`/usr/sbin/homi-log '[App] 订阅地址不合法，已拒绝' 2>/dev/null`);
 				return { success: false, error: 'invalid_url' };
 			}
-			if (system(`test -f '${builtin_template}'`) != 0)
-				return { success: false, error: 'no_template' };
-			/* sed 替换占位符：& 在替换串中有特殊含义，先转义；URL 已排除单引号与 | 分隔符 */
-			const esc_url = replace(url, '&', '\\&');
-			if (system(`sed 's|url: "订阅URL"|url: "${esc_url}"|' '${builtin_template}' > '${sub_config}.tmp'`) != 0)
-				return { success: false, error: 'generate_failed' };
-			if (system(`grep -q '订阅URL' '${sub_config}.tmp'`) == 0) {
-				system(`rm -f '${sub_config}.tmp'`);
+			const urls = sub_urls();
+			for (let i = 0; i < length(urls); i++) {
+				if (urls[i] == url)
+					return { success: false, error: 'duplicate' };
+			}
+			push(urls, url);
+			if (!regen_subscription(urls)) {
+				system(`/usr/sbin/homi-log '[App] 订阅配置生成失败' 2>/dev/null`);
 				return { success: false, error: 'generate_failed' };
 			}
-			if (system(`/usr/bin/mihomo -t -d '${home_dir}' -f '${sub_config}.tmp' >/dev/null 2>&1`) != 0) {
-				system(`rm -f '${sub_config}.tmp'`);
-				system(`/usr/sbin/homi-log '[App] 订阅配置生成后校验失败' 2>/dev/null`);
-				return { success: false, error: 'config_invalid' };
-			}
-			system(`mv '${sub_config}.tmp' '${sub_config}'`);
-			const esc_uci = replace(url, "'", "'\\''");
-			if (system(`uci set homi.main.subscription_url='${esc_uci}'; uci set homi.main.config_file='${sub_config}'; uci commit homi`) != 0)
+			if (!save_sub_urls(urls))
 				return { success: false, error: 'uci_failed' };
-			system(`/usr/sbin/homi-log '[App] 订阅已保存并设为正使用配置' 2>/dev/null`);
+			system(`/usr/sbin/homi-log '[App] 已添加订阅并设为正使用配置' 2>/dev/null`);
 			return { success: true, path: sub_config };
 		}
 	},
-	delete_subscription: {
-		call: function() {
-			const was_active = active_config() == sub_config;
-			system(`uci -q delete homi.main.subscription_url; uci commit homi`);
-			system(`rm -f '${sub_config}'`);
-			if (was_active) {
-				system(`uci -q delete homi.main.config_file; uci commit homi`);
-				system(`/etc/init.d/homi stop >/dev/null 2>&1`);
-				system(`/usr/sbin/homi-log '[App] 订阅已删除，正使用的订阅配置已失效，服务已停止' 2>/dev/null`);
-			} else {
-				system(`/usr/sbin/homi-log '[App] 订阅已删除' 2>/dev/null`);
+	update_subscription: {
+		args: { index: '', url: '' },
+		call: function(req) {
+			const idx = int(req.args?.index ?? '0');
+			const url = trim(req.args?.url ?? '');
+			if (!valid_sub_url(url)) {
+				system(`/usr/sbin/homi-log '[App] 订阅地址不合法，已拒绝' 2>/dev/null`);
+				return { success: false, error: 'invalid_url' };
 			}
-			return { success: true, stopped: was_active };
+			const urls = sub_urls();
+			if (idx < 1 || idx > length(urls))
+				return { success: false, error: 'bad_index' };
+			urls[idx - 1] = url;
+			if (!regen_subscription(urls)) {
+				system(`/usr/sbin/homi-log '[App] 订阅配置生成失败' 2>/dev/null`);
+				return { success: false, error: 'generate_failed' };
+			}
+			if (!save_sub_urls(urls))
+				return { success: false, error: 'uci_failed' };
+			system(`/usr/sbin/homi-log '[App] 订阅地址已更新' 2>/dev/null`);
+			return { success: true };
+		}
+	},
+	remove_subscription: {
+		args: { index: '' },
+		call: function(req) {
+			const idx = int(req.args?.index ?? '0');
+			const urls = sub_urls();
+			if (idx < 1 || idx > length(urls))
+				return { success: false, error: 'bad_index' };
+			const rest = [];
+			for (let i = 0; i < length(urls); i++) {
+				if (i != idx - 1)
+					push(rest, urls[i]);
+			}
+			const was_active = active_config() == sub_config;
+			if (length(rest) == 0) {
+				clear_sub_urls();
+				system(`rm -f '${sub_config}'`);
+				if (was_active) {
+					system(`uci -q delete homi.main.config_file; uci commit homi`);
+					system(`/etc/init.d/homi stop >/dev/null 2>&1`);
+					system(`/usr/sbin/homi-log '[App] 订阅已全部删除，正使用的订阅配置已失效，服务已停止' 2>/dev/null`);
+				} else {
+					system(`/usr/sbin/homi-log '[App] 订阅已全部删除' 2>/dev/null`);
+				}
+				return { success: true, stopped: was_active };
+			}
+			if (!regen_subscription(rest)) {
+				system(`/usr/sbin/homi-log '[App] 订阅配置生成失败' 2>/dev/null`);
+				return { success: false, error: 'generate_failed' };
+			}
+			if (!save_sub_urls(rest))
+				return { success: false, error: 'uci_failed' };
+			system(`/usr/sbin/homi-log '[App] 已删除一条订阅' 2>/dev/null`);
+			return { success: true, stopped: false };
 		}
 	}
 };
