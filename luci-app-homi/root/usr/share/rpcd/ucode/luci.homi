@@ -271,55 +271,27 @@ const methods = {
 			return { success: ok };
 		}
 	},
-	/* 更新规则：调脚本并行 PUT 全部 rule-providers（域名规则 + IP 规则），读 JSON 结果回前端 */
+	/* 更新规则：调脚本并行 PUT 全部 rule-providers（域名规则 + IP 规则），读 JSON 结果回前端。
+	   注意：不用 popen 抓脚本 stdout——长任务+后台子进程的管道在这条路上一直拿不到输出；
+	   改走 system() 跑脚本（只等退出码），结果读脚本落盘的 /tmp JSON，两条都是已验证通的路。 */
 	update_rules: {
 		args: {},
 		call: function() {
-			system(`/usr/sbin/homi-log '[App] 更新规则调试：进入方法' 2>/dev/null`);
 			const config_path = active_config();
 			const esc = replace(config_path, "'", "'\\''");
-			let out = '';
-			let popen_ok = 0;
-			try {
-				const process = popen(`/usr/sbin/homi-update-rules '${esc}' 2>/dev/null`);
-				if (process) {
-					popen_ok = 1;
-					const tmp = process.read('all');
-					process.close();
-					if (type(tmp) == 'string')
-						out = tmp;
-				}
-			} catch (e) {
-				out = '';
-			}
+			system(`rm -f /tmp/homi-update-rules.last.json 2>/dev/null`);
+			system(`/usr/sbin/homi-update-rules '${esc}' >/dev/null 2>&1`);
 			let r = {};
-			try {
-				r = json(out);
-			} catch (e) {
-				r = {};
-			}
-			/* stdout 解析失败时兜底读脚本落盘的 JSON（脚本同时写 stdout 与 /tmp 文件） */
-			let fb_len = -1;
-			if (r.total === undefined && !r.error) {
-				let out2 = '';
-				try {
-					const p2 = popen(`cat /tmp/homi-update-rules.last.json 2>/dev/null`);
-					if (p2) {
-						const tmp2 = p2.read('all');
-						p2.close();
-						if (type(tmp2) == 'string')
-							out2 = tmp2;
-					}
-				} catch (e2) {
-					out2 = '';
-				}
-				fb_len = length(out2);
+			const p2 = popen(`cat /tmp/homi-update-rules.last.json 2>/dev/null`);
+			if (p2) {
+				const out2 = p2.read('all');
+				p2.close();
 				try {
 					r = json(out2);
 				} catch (e2) {
+					r = {};
 				}
 			}
-			system(`/usr/sbin/homi-log '[App] 更新规则调试：cfg=${esc} stdout_len=${length(out)} popen=${popen_ok} fallback_len=${fb_len}' 2>/dev/null`);
 			if (r.error)
 				return { success: false, error: r.error };
 			if (r.total === undefined)
