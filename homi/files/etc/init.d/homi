@@ -12,9 +12,23 @@ HOME_DIR=/etc/homi
 MIHOMO_BIN=/usr/bin/mihomo
 CORE_LOG=/var/log/homi/core.log
 MAX_LINES=500
+# MMDB（GeoIP 库）下载地址：经 gh-proxy 代理，路由器直连 GitHub 常常 90 秒超时
+MMDB_URL="https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb"
 
 plog() {
 	/usr/sbin/homi-log "$1" 2>/dev/null
+}
+
+# 确保 /etc/homi/geoip.metadb 存在：缺失时 mihomo -t 会直连 GitHub 下 90 秒才超时
+ensure_mmdb() {
+	[ -f "$HOME_DIR/geoip.metadb" ] && return 0
+	if curl -fsSL --max-time 30 "$MMDB_URL" -o "$HOME_DIR/geoip.metadb.tmp" >/dev/null 2>&1 && mv "$HOME_DIR/geoip.metadb.tmp" "$HOME_DIR/geoip.metadb"; then
+		plog "[App] MMDB 已经代理下载"
+		return 0
+	fi
+	rm -f "$HOME_DIR/geoip.metadb.tmp"
+	plog "[App] MMDB 下载失败，mihomo 仍会尝试直连 GitHub"
+	return 1
 }
 
 trim_log() {
@@ -29,7 +43,8 @@ trim_log() {
 validate_config() {
 	local cfg="$1"
 	[ -n "$cfg" ] && [ -f "$cfg" ] || return 1
-	# 30 秒超时：mihomo -t 首次运行会下载 MMDB，网络卡住时不能让 procd 无限等
+	ensure_mmdb
+	# 30 秒超时：MMDB 缺失且代理也下不到时，mihomo -t 会直连 GitHub 耗 90 秒，不能让 procd 无限等
 	timeout 30 "$MIHOMO_BIN" -t -d "$HOME_DIR" -f "$cfg" >/dev/null 2>&1
 }
 

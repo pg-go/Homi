@@ -274,6 +274,8 @@ return view.extend({
 						const emsg = r && r.error ? r.error : '';
 						const detail = emsg === 'timeout'
 							? _('（校验超时：网络慢或下载卡住，请稍后重试）')
+							: emsg === 'mmdb_download_failed'
+							? _('（MMDB 下载失败：请检查网络后重试，路由器需能访问 gh-proxy 或 GitHub）')
 							: (emsg ? '（' + emsg + '）' : '');
 						notify(_('配置校验未通过，请检查文件内容。') + detail, 'error');
 					}
