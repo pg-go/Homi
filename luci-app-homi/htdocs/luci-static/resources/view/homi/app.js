@@ -146,6 +146,7 @@ return view.extend({
 									}
 								});
 							};
+							homi.logMsg('[App] 开始轮询更新结果');
 							setTimeout(poll, 2000);
 						})
 						.catch((e) => { notify(_('规则更新失败：') + e, 'error'); homi.logMsg('[App] 规则更新失败：' + e); });

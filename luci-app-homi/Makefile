@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=20
+PKG_RELEASE:=21
 
 LUCI_TITLE:=LuCI Support for Homi
 LUCI_DEPENDS:=+luci-base +homi
