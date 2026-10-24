@@ -273,7 +273,9 @@ const methods = {
 	},
 	/* 更新规则：调脚本并行 PUT 全部 rule-providers（域名规则 + IP 规则），读 JSON 结果回前端 */
 	update_rules: {
+		args: {},
 		call: function() {
+			system(`/usr/sbin/homi-log '[App] 更新规则调试：进入方法' 2>/dev/null`);
 			const config_path = active_config();
 			const esc = replace(config_path, "'", "'\\''");
 			let out = '';
