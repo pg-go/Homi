@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=homi
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 PKGARCH:=all
 
 PKG_LICENSE:=MIT
@@ -41,9 +41,21 @@ define Package/homi/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-update-dashboard $(1)/usr/sbin/homi-update-dashboard
 	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-log $(1)/usr/sbin/homi-log
+	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-fetch-mmdb $(1)/usr/sbin/homi-fetch-mmdb
 
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) $(CURDIR)/files/lib/upgrade/keep.d/homi $(1)/lib/upgrade/keep.d/homi
+endef
+
+define Package/homi/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+# 安装完成后立即后台预下载 MMDB，不等用户上传配置；后台执行不阻塞 opkg，
+# 下载失败也不影响安装（首次校验/启动时还会再试）
+if [ ! -f /etc/homi/geoip.metadb ]; then
+	/usr/sbin/homi-fetch-mmdb 60 >/dev/null 2>&1 &
+fi
+exit 0
 endef
 
 define Package/homi/postrm

@@ -175,12 +175,11 @@ const methods = {
 			/* MMDB 缺失时先经代理下载：mihomo -t 找不到 geoip.metadb 会直连 GitHub
 			   下 90 秒才超时，远超 LuCI 的 20 秒 RPC 上限；代理下不到则直接报错，不跑校验 */
 			if (system(`test -f '${home_dir}/geoip.metadb'`) != 0) {
-				const dl = system(`curl -fsSL --max-time 12 'https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb' -o '${home_dir}/geoip.metadb.tmp' >/dev/null 2>&1 && mv '${home_dir}/geoip.metadb.tmp' '${home_dir}/geoip.metadb'`);
-				if (dl != 0 || system(`test -f '${home_dir}/geoip.metadb'`) != 0) {
+				system(`/usr/sbin/homi-fetch-mmdb 12 >/dev/null 2>&1`);
+				if (system(`test -f '${home_dir}/geoip.metadb'`) != 0) {
 					system(`/usr/sbin/homi-log '[App] MMDB 下载失败，校验中止' 2>/dev/null`);
 					return { success: false, error: 'mmdb_download_failed' };
 				}
-				system(`/usr/sbin/homi-log '[App] MMDB 已经代理下载' 2>/dev/null`);
 			}
 			/* 15 秒超时：mihomo -t 首次运行时会下载 MMDB，网络卡住时不能无限等，
 			   超过 LuCI 的 20 秒 RPC 超时只会导致前端报 XHR timeout 且后端进程残留 */

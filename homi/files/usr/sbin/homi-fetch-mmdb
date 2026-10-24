@@ -1,0 +1,16 @@
+#!/bin/sh
+# 预下载 MMDB（GeoIP 库）到 /etc/homi/geoip.metadb；已存在则直接退出
+# 用法：homi-fetch-mmdb [超时秒数，默认 30]
+# 临时文件带 PID 后缀，避免并发下载互相覆盖；只有 curl 成功才 mv 到正式路径
+HOME_DIR=/etc/homi
+MMDB_URL="https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb"
+TIMEOUT="${1:-30}"
+[ -f "$HOME_DIR/geoip.metadb" ] && exit 0
+tmp="$HOME_DIR/geoip.metadb.$$.tmp"
+if curl -fsSL --max-time "$TIMEOUT" "$MMDB_URL" -o "$tmp" >/dev/null 2>&1 && mv "$tmp" "$HOME_DIR/geoip.metadb"; then
+	/usr/sbin/homi-log '[App] MMDB 下载完成' 2>/dev/null
+	exit 0
+fi
+rm -f "$tmp"
+/usr/sbin/homi-log '[App] MMDB 下载失败' 2>/dev/null
+exit 1
