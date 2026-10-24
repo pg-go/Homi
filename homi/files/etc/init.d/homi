@@ -29,10 +29,13 @@ trim_log() {
 validate_config() {
 	local cfg="$1"
 	[ -n "$cfg" ] && [ -f "$cfg" ] || return 1
-	# 先确保 MMDB 存在：缺失时 mihomo -t 会直连 GitHub 下 90 秒才超时
+	# 先确保 MMDB 存在；注意不能用 timeout 命令——部分 busybox 未编译该 applet
 	/usr/sbin/homi-fetch-mmdb 30 >/dev/null 2>&1
-	# 30 秒超时兜底：MMDB 缺失且代理也下不到时，不能让 procd 无限等
-	timeout 30 "$MIHOMO_BIN" -t -d "$HOME_DIR" -f "$cfg" >/dev/null 2>&1
+	if [ ! -f "$HOME_DIR/geoip.metadb" ] && grep -qi geoip "$cfg" 2>/dev/null; then
+		plog "[App] MMDB 缺失且配置用到 GEOIP，拒绝启动（避免 mihomo 直连 GitHub 耗 90 秒）"
+		return 1
+	fi
+	"$MIHOMO_BIN" -t -d "$HOME_DIR" -f "$cfg" >/dev/null 2>&1
 }
 
 start_service() {
