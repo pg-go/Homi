@@ -98,27 +98,55 @@ return view.extend({
 				}),
 				actionButton(_('更新规则'), 'positive', function () {
 					homi.logMsg('[App] 开始更新规则…');
+					const showResult = (s) => {
+						if (s && s.success) {
+							const failed = (s.failed && s.failed.length) ? s.failed : [];
+							const failNames = failed.length ? _('（失败：') + failed.join(', ') + '）' : '';
+							homi.logMsg('[App] 规则更新完成：成功 ' + s.updated + ' 个，失败 ' + failed.length + ' 个，共 ' + s.total + ' 个');
+							notify(_('规则更新完成：成功 ') + s.updated + _(' 个，失败 ') + failed.length + _(' 个') + failNames);
+						} else {
+							const err = (s && s.error) || 'failed';
+							if (err === 'not_configured')
+								notify(_('请先在配置文件中设置 external-controller（API 监听地址）'), 'error');
+							else if (err === 'not_running')
+								notify(_('服务未运行或控制器不可达，请先启动服务'), 'error');
+							else if (err === 'no_providers')
+								notify(_('当前配置没有规则提供者'), 'error');
+							else if (err === 'no_config')
+								notify(_('请先上传配置文件'), 'error');
+							else
+								notify(_('规则更新失败'), 'error');
+							homi.logMsg('[App] 规则更新失败：' + err);
+						}
+					};
 					homi.updateRules()
 						.then((r) => {
-							if (r && r.success) {
-								const failed = (r.failed && r.failed.length) ? r.failed : [];
-								const failNames = failed.length ? _('（失败：') + failed.join(', ') + '）' : '';
-								homi.logMsg('[App] 规则更新完成：成功 ' + r.updated + ' 个，失败 ' + failed.length + ' 个，共 ' + r.total + ' 个');
-								notify(_('规则更新完成：成功 ') + r.updated + _(' 个，失败 ') + failed.length + _(' 个') + failNames);
-							} else {
-								const err = (r && r.error) || 'failed';
-								if (err === 'not_configured')
-									notify(_('请先在配置文件中设置 external-controller（API 监听地址）'), 'error');
-								else if (err === 'not_running')
-									notify(_('服务未运行或控制器不可达，请先启动服务'), 'error');
-								else if (err === 'no_providers')
-									notify(_('当前配置没有规则提供者'), 'error');
-								else if (err === 'no_config')
-									notify(_('请先上传配置文件'), 'error');
-								else
-									notify(_('规则更新失败'), 'error');
-								homi.logMsg('[App] 规则更新失败：' + err);
+							if (!(r && r.success && r.started)) {
+								showResult(r);
+								return;
 							}
+							let tries = 0;
+							const poll = () => {
+								tries++;
+								homi.updateStatus().then((s) => {
+									if (s && s.ready) {
+										showResult(s);
+									} else if (tries < 15) {
+										setTimeout(poll, 2000);
+									} else {
+										notify(_('规则更新超时，请查看日志'), 'error');
+										homi.logMsg('[App] 规则更新超时');
+									}
+								}).catch((e) => {
+									if (tries < 15) {
+										setTimeout(poll, 2000);
+									} else {
+										notify(_('规则更新失败：') + e, 'error');
+										homi.logMsg('[App] 规则更新失败：' + e);
+									}
+								});
+							};
+							setTimeout(poll, 2000);
 						})
 						.catch((e) => { notify(_('规则更新失败：') + e, 'error'); homi.logMsg('[App] 规则更新失败：' + e); });
 				})

@@ -271,16 +271,21 @@ const methods = {
 			return { success: ok };
 		}
 	},
-	/* 更新规则：调脚本并行 PUT 全部 rule-providers（域名规则 + IP 规则），读 JSON 结果回前端。
-	   注意：不用 popen 抓脚本 stdout——长任务+后台子进程的管道在这条路上一直拿不到输出；
-	   改走 system() 跑脚本（只等退出码），结果读脚本落盘的 /tmp JSON，两条都是已验证通的路。 */
+	/* 更新规则：后台触发 + 前端轮询结果。同步等脚本跑完那条路一直拿不到结果，
+	   改成触发后立即返回（不等待），脚本在后台跑、结果落盘，前端轮询落盘 JSON。 */
 	update_rules: {
 		args: {},
 		call: function() {
 			const config_path = active_config();
 			const esc = replace(config_path, "'", "'\\''");
 			system(`rm -f /tmp/homi-update-rules.last.json 2>/dev/null`);
-			system(`/usr/sbin/homi-update-rules '${esc}' >/dev/null 2>&1`);
+			system(`nohup /usr/sbin/homi-update-rules '${esc}' >/dev/null 2>&1 &`);
+			return { success: true, started: true };
+		}
+	},
+	update_status: {
+		args: {},
+		call: function() {
 			let r = {};
 			const p2 = popen(`cat /tmp/homi-update-rules.last.json 2>/dev/null`);
 			if (p2) {
@@ -292,13 +297,12 @@ const methods = {
 					r = {};
 				}
 			}
-			if (r.error)
-				return { success: false, error: r.error };
 			if (r.total === undefined)
-				return { success: false, error: 'failed' };
+				return { ready: false };
+			if (r.error)
+				return { ready: true, success: false, error: r.error };
 			const failed = r.failed || [];
-			system(`/usr/sbin/homi-log '[App] 规则更新完成：成功 ${r.updated} 个，失败 ${length(failed)} 个，共 ${r.total} 个' 2>/dev/null`);
-			return { success: true, updated: r.updated, failed: failed, total: r.total };
+			return { ready: true, success: true, updated: r.updated, failed: failed, total: r.total };
 		}
 	},
 	log_msg: {
