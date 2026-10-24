@@ -196,6 +196,11 @@ const methods = {
 			if (index(cfg, home_dir + '/') != 0)
 				return { success: false, error: 'invalid_path' };
 			const esc = replace(cfg, "'", "'\\''");
+			/* 规则源地址改走代理：路由器直连 raw.githubusercontent.com 常常超时，
+			   两步 sed 先去已有前缀再统一加前缀，保证幂等不叠加；只换 URL 子串，不动 YAML 结构与注释 */
+			system(`sed -i -e 's|https://gh-proxy.com/https://raw.githubusercontent.com/|https://raw.githubusercontent.com/|g' -e 's|https://raw.githubusercontent.com/|https://gh-proxy.com/https://raw.githubusercontent.com/|g' '${esc}' 2>/dev/null`);
+			if (system(`grep -q 'gh-proxy.com/https://raw.githubusercontent.com/' '${esc}' 2>/dev/null`) == 0)
+				system(`/usr/sbin/homi-log '[App] 规则源地址已改走代理' 2>/dev/null`);
 			const ok = system(`uci set homi.main.config_file='${esc}' && uci commit homi`) == 0;
 			return { success: ok };
 		}
@@ -282,6 +287,18 @@ const methods = {
 				r = json(out);
 			} catch (e) {
 				r = {};
+			}
+			/* stdout 解析失败时兜底读脚本落盘的 JSON（脚本同时写 stdout 与 /tmp 文件） */
+			if (r.total === undefined && !r.error) {
+				const p2 = popen(`cat /tmp/homi-update-rules.last.json 2>/dev/null`);
+				if (p2) {
+					const out2 = p2.read('all');
+					p2.close();
+					try {
+						r = json(out2);
+					} catch (e2) {
+					}
+				}
 			}
 			if (r.error)
 				return { success: false, error: r.error };

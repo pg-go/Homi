@@ -113,6 +113,8 @@ return view.extend({
 									notify(_('服务未运行或控制器不可达，请先启动服务'), 'error');
 								else if (err === 'no_providers')
 									notify(_('当前配置没有规则提供者'), 'error');
+								else if (err === 'no_config')
+									notify(_('请先上传配置文件'), 'error');
 								else
 									notify(_('规则更新失败'), 'error');
 								homi.logMsg('[App] 规则更新失败：' + err);
