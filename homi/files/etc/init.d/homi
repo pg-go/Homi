@@ -29,7 +29,8 @@ trim_log() {
 validate_config() {
 	local cfg="$1"
 	[ -n "$cfg" ] && [ -f "$cfg" ] || return 1
-	"$MIHOMO_BIN" -t -d "$HOME_DIR" -f "$cfg" >/dev/null 2>&1
+	# 30 秒超时：mihomo -t 首次运行会下载 MMDB，网络卡住时不能让 procd 无限等
+	timeout 30 "$MIHOMO_BIN" -t -d "$HOME_DIR" -f "$cfg" >/dev/null 2>&1
 }
 
 start_service() {

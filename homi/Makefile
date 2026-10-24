@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=homi
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 PKGARCH:=all
 
 PKG_LICENSE:=MIT

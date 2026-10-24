@@ -271,7 +271,10 @@ return view.extend({
 						});
 					} else {
 						homi.logMsg('[App] 上传配置校验未通过：' + f.name);
-						const detail = r && r.error ? '（' + r.error + '）' : '';
+						const emsg = r && r.error ? r.error : '';
+						const detail = emsg === 'timeout'
+							? _('（校验超时：网络慢或下载卡住，请稍后重试）')
+							: (emsg ? '（' + emsg + '）' : '');
 						notify(_('配置校验未通过，请检查文件内容。') + detail, 'error');
 					}
 				})

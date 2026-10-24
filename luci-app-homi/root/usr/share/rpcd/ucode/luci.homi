@@ -172,7 +172,14 @@ const methods = {
 			}
 			/* shell 单引号转义防注入 */
 			const esc = replace(cfg, "'", "'\\''");
-			const ok = system(`/usr/bin/mihomo -t -d '${home_dir}' -f '${esc}' >/dev/null 2>&1`) == 0;
+			/* 15 秒超时：mihomo -t 首次运行时会下载 MMDB，网络卡住时不能无限等，
+			   超过 LuCI 的 20 秒 RPC 超时只会导致前端报 XHR timeout 且后端进程残留 */
+			const rc = system(`timeout 15 /usr/bin/mihomo -t -d '${home_dir}' -f '${esc}' >/dev/null 2>&1`);
+			if (rc == 124) {
+				system(`/usr/sbin/homi-log '[App] 校验超时（15秒）：${esc}' 2>/dev/null`);
+				return { success: false, error: 'timeout' };
+			}
+			const ok = rc == 0;
 			if (!ok)
 				system(`/usr/sbin/homi-log '[App] 校验失败：${esc}' 2>/dev/null`);
 			return { success: ok };
