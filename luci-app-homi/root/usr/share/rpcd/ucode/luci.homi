@@ -108,6 +108,32 @@ function active_config() {
 	return cfg;
 }
 
+/* 读面板连接信息（controller/secret/ui），供 dashboard 与 open_dashboard 共用 */
+function dashboard_info() {
+	const config_path = active_config();
+	let cfg = {};
+	const process = popen(`yq -o=json '.' '${config_path}' 2>/dev/null`);
+	if (process) {
+		const out = process.read('all');
+		process.close();
+		try {
+			cfg = json(out);
+		} catch (e) {
+			cfg = {};
+		}
+	}
+	const ctl = cfg['external-controller'];
+	const ctl_tls = cfg['external-controller-tls'];
+	if (!ctl && !ctl_tls)
+		return { error: 'not_configured' };
+	return {
+		controller: ctl_tls ?? ctl,
+		tls: ctl_tls ? true : false,
+		secret: cfg['secret'] ?? '',
+		ui: cfg['external-ui'] ?? ''
+	};
+}
+
 const methods = {
 	version: {
 		call: function() {
@@ -199,29 +225,28 @@ const methods = {
 	},
 	dashboard: {
 		call: function() {
-			const config_path = active_config();
-			let cfg = {};
-			const process = popen(`yq -o=json '.' '${config_path}' 2>/dev/null`);
-			if (process) {
-				const out = process.read('all');
-				process.close();
-				try {
-					cfg = json(out);
-				} catch (e) {
-					cfg = {};
-				}
+			return dashboard_info();
+		}
+	},
+	/* 打开面板：一键直达。先补齐面板文件（就绪则不管；嵌套则展平；缺失则下载），
+	   再返回连接信息。脚本走 /bin/sh 调用，不依赖其 +x 位。 */
+	open_dashboard: {
+		call: function() {
+			const info = dashboard_info();
+			if (info.error)
+				return { success: false, error: info.error };
+			/* external-ui 相对路径按 mihomo -d（即 home_dir）解析 */
+			let u = info.ui || 'ui';
+			if (substr(u, 0, 1) != '/')
+				u = home_dir + '/' + u;
+			const esc = replace(u, "'", "'\\''");
+			system(`/bin/sh /usr/sbin/homi-update-dashboard --ensure '${esc}' >/dev/null 2>&1`);
+			if (system(`test -f '${esc}/index.html'`) != 0) {
+				system(`/usr/sbin/homi-log '[App] 打开面板失败：面板文件缺失' 2>/dev/null`);
+				return { success: false, error: 'ui_missing' };
 			}
-			const ctl = cfg['external-controller'];
-			const ctl_tls = cfg['external-controller-tls'];
-			if (!ctl && !ctl_tls) {
-				return { error: 'not_configured' };
-			}
-			return {
-				controller: ctl_tls ?? ctl,
-				tls: ctl_tls ? true : false,
-				secret: cfg['secret'] ?? '',
-				ui: cfg['external-ui'] ?? ''
-			};
+			info.success = true;
+			return info;
 		}
 	},
 	update_dashboard: {

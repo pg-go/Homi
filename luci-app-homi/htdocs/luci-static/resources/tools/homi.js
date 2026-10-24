@@ -37,9 +37,9 @@ const callTestConfig = rpc.declare({
     expect: { '': {} }
 });
 
-const callDashboard = rpc.declare({
+const callOpenDashboard = rpc.declare({
     object: 'luci.homi',
-    method: 'dashboard',
+    method: 'open_dashboard',
     expect: { '': {} }
 });
 
@@ -166,10 +166,6 @@ return baseclass.extend({
         return path ? callTestConfig(path) : callTestConfig();
     },
 
-    dashboard: function () {
-        return callDashboard();
-    },
-
     updateDashboard: function () {
         return callUpdateDashboard();
     },
@@ -252,9 +248,10 @@ return baseclass.extend({
     },
 
     openDashboard: async function () {
-        const d = await callDashboard();
-        if (!d || d.error || !d.controller) {
-            return Promise.reject('not_configured');
+        /* 后端先补齐面板文件（就绪/展平/下载），再返回连接信息，一键直达 */
+        const d = await callOpenDashboard();
+        if (!d || !d.success) {
+            return Promise.reject((d && d.error) || 'failed');
         }
 
         const controller = String(d.controller);

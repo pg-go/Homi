@@ -87,7 +87,14 @@ return view.extend({
 				}),
 				actionButton(_('打开面板'), 'primary', function () {
 					homi.openDashboard()
-						.catch(() => notify(_('请先在配置文件中设置 external-controller（API 监听地址），例如：external-controller: 0.0.0.0:9090'), 'error'));
+						.catch((e) => {
+							if (e === 'not_configured')
+								notify(_('请先在配置文件中设置 external-controller（API 监听地址），例如：external-controller: 0.0.0.0:9090'), 'error');
+							else if (e === 'ui_missing')
+								notify(_('面板文件缺失且下载失败，请检查网络后重试「更新面板」'), 'error');
+							else
+								notify(_('打开面板失败'), 'error');
+						});
 				})
 			]);
 		};

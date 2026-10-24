@@ -1,42 +1,80 @@
 #!/bin/sh
 #
-# 下载最新 zashboard 面板到 /etc/homi/ui
-# 供 LuCI「更新面板」按钮调用
+# 下载 zashboard 面板到面板目录（默认 /etc/homi/ui）
+# 用法：
+#   homi-update-dashboard                 # 强制重新下载（供「更新面板」按钮）
+#   homi-update-dashboard --ensure [dir]  # 只在缺失时补齐：已就绪直接返回；
+#                                         # 嵌套在子目录里则就地展平；完全缺失才下载
+#                                         #（供「打开面板」一键直达）
 #
 
-set -e
-
-UI_DIR=/etc/homi/ui
+UI_DIR="${2:-/etc/homi/ui}"
 URL="https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
 
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
+log() { /usr/sbin/homi-log "[App] $1" 2>/dev/null; }
 
-echo "下载面板 $URL ..."
-if command -v curl >/dev/null 2>&1; then
-	curl -fsSL -o "$TMPDIR/ui.zip" "$URL"
-else
-	wget -O "$TMPDIR/ui.zip" "$URL"
-fi
-
-rm -rf "$UI_DIR"
-mkdir -p "$UI_DIR"
-unzip -q -o "$TMPDIR/ui.zip" -d "$TMPDIR/x"
-
-# zashboard 的 dist.zip 顶层目录名不固定（见过 zashboard/、dist/），展平一层，
-# 保证 index.html 直接落在 $UI_DIR 下，「打开面板」一点即达，不用再点子目录
-# （注意：赋值语句不做 glob 展开，所以用 for 循环取子目录名）
-inner="$TMPDIR/x"
-if [ "$(ls -A "$inner" | wc -l)" -eq 1 ]; then
-	for d in "$inner"/*; do
-		[ -d "$d" ] && inner="$d"
+# 展平：index.html 不在顶层而在子目录里时，把子目录内容上移一层
+flatten_ui() {
+	[ -f "$UI_DIR/index.html" ] && return 0
+	for d in "$UI_DIR"/*; do
+		[ -d "$d" ] || continue
+		[ -f "$d/index.html" ] || continue
+		for f in "$d"/* "$d"/.[!.]*; do
+			[ -e "$f" ] && mv "$f" "$UI_DIR"/
+		done
+		rmdir "$d" 2>/dev/null
+		if [ -f "$UI_DIR/index.html" ]; then
+			log "面板目录已展平，可直接打开"
+			return 0
+		fi
 	done
-fi
-for f in "$inner"/*; do
-	[ -e "$f" ] && mv "$f" "$UI_DIR"/
-done
-for f in "$inner"/.[!.]*; do
-	[ -e "$f" ] && mv "$f" "$UI_DIR"/
-done
+	return 1
+}
 
-echo "面板已更新到 $UI_DIR"
+do_download() {
+	TMPDIR="$(mktemp -d)" || return 1
+	trap 'rm -rf "$TMPDIR"' EXIT INT TERM
+	log "面板缺失，开始下载…"
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL --max-time 120 -o "$TMPDIR/ui.zip" "$URL" || return 1
+	else
+		wget -T 120 -O "$TMPDIR/ui.zip" "$URL" || return 1
+	fi
+	# 简单校验：包里得有 index.html（防止下到错误页面）
+	if ! unzip -l "$TMPDIR/ui.zip" 2>/dev/null | grep -q "index.html"; then
+		log "面板下载失败：文件损坏"
+		return 1
+	fi
+	rm -rf "$UI_DIR"
+	mkdir -p "$UI_DIR" || return 1
+	unzip -q -o "$TMPDIR/ui.zip" -d "$TMPDIR/x" || return 1
+	# dist.zip 顶层目录名不固定（见过 zashboard/、dist/），展平一层，
+	# 保证 index.html 直接落在面板目录下
+	inner="$TMPDIR/x"
+	if [ "$(ls -A "$inner" | wc -l)" -eq 1 ]; then
+		for d in "$inner"/*; do
+			[ -d "$d" ] && inner="$d"
+		done
+	fi
+	for f in "$inner"/* "$inner"/.[!.]*; do
+		[ -e "$f" ] && mv "$f" "$UI_DIR"/
+	done
+	trap - EXIT INT TERM
+	rm -rf "$TMPDIR"
+	log "面板已更新"
+	return 0
+}
+
+if [ "$1" = "--ensure" ]; then
+	[ -f "$UI_DIR/index.html" ] && exit 0
+	flatten_ui && exit 0
+	do_download && flatten_ui && exit 0
+	log "面板补齐失败，请检查网络后重试「更新面板」"
+	exit 1
+fi
+
+# 默认：强制重新下载
+do_download || exit 1
+flatten_ui || true
+[ -f "$UI_DIR/index.html" ] || exit 1
+exit 0
