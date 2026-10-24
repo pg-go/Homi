@@ -1,0 +1,80 @@
+#!/bin/sh
+# 更新指定配置文件的全部 rule-providers（域名规则 + IP 规则）
+# 用法：homi-update-rules <配置文件路径>
+# stdout 输出 JSON：{"updated":N,"failed":["a","b"],"total":M}，或带 error 字段
+# 原理：调 mihomo 控制器的 PUT /providers/rules/{name} 强制重拉；并行执行，总耗时只取决于最慢的一个
+# 依赖：yq、curl（homi 包已依赖）
+CFG="$1"
+[ -n "$CFG" ] && [ -f "$CFG" ] || { echo '{"updated":0,"failed":[],"total":0,"error":"no_config"}'; exit 1; }
+
+CTL=$(yq '.external-controller // ""' "$CFG" 2>/dev/null)
+TLS=$(yq '.external-controller-tls // ""' "$CFG" 2>/dev/null)
+SECRET=$(yq '.secret // ""' "$CFG" 2>/dev/null)
+if [ -n "$TLS" ]; then
+	HOST="$TLS"
+	SCHEME="https"
+	TLS_FLAG="-k"
+else
+	HOST="$CTL"
+	SCHEME="http"
+	TLS_FLAG=""
+fi
+[ -n "$HOST" ] || { echo '{"updated":0,"failed":[],"total":0,"error":"not_configured"}'; exit 1; }
+# 0.0.0.0/:port → 127.0.0.1:port（本机调控制器走回环）
+case "$HOST" in
+	0.0.0.0:*) HOST="127.0.0.1:${HOST#0.0.0.0:}" ;;
+	:*) HOST="127.0.0.1$HOST" ;;
+esac
+
+# 调控制器 API：$1 方法，$2 路径，$3 超时秒数；-f 让 HTTP 4xx/5xx 也算失败
+api_curl() {
+	if [ -n "$SECRET" ]; then
+		curl -fs $TLS_FLAG --max-time "$3" -X "$1" -H "Authorization: Bearer $SECRET" "$SCHEME://$HOST$2" >/dev/null 2>&1
+	else
+		curl -fs $TLS_FLAG --max-time "$3" -X "$1" "$SCHEME://$HOST$2" >/dev/null 2>&1
+	fi
+}
+
+# 先确认控制器可达（服务在跑），否则每个 PUT 都会失败
+if ! api_curl GET /version 5; then
+	echo '{"updated":0,"failed":[],"total":0,"error":"not_running"}'
+	exit 1
+fi
+
+NAMES=$(yq '.rule-providers // {} | keys | .[]' "$CFG" 2>/dev/null)
+[ -n "$NAMES" ] || { echo '{"updated":0,"failed":[],"total":0,"error":"no_providers"}'; exit 0; }
+
+TMPDIR=$(mktemp -d)
+i=0
+for name in $NAMES; do
+	i=$((i + 1))
+	(
+		if api_curl PUT "/providers/rules/$name" 15; then
+			echo OK > "$TMPDIR/$i.ok"
+		else
+			echo FAIL > "$TMPDIR/$i.fail"
+		fi
+	) &
+done
+wait
+
+i=0
+UPDATED=0
+FAILED_JSON=""
+TOTAL=0
+for name in $NAMES; do
+	i=$((i + 1))
+	TOTAL=$((TOTAL + 1))
+	if [ -f "$TMPDIR/$i.ok" ]; then
+		UPDATED=$((UPDATED + 1))
+	else
+		esc=$(printf '%s' "$name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+		if [ -n "$FAILED_JSON" ]; then
+			FAILED_JSON="$FAILED_JSON,\"$esc\""
+		else
+			FAILED_JSON="\"$esc\""
+		fi
+	fi
+done
+rm -rf "$TMPDIR"
+echo "{\"updated\":$UPDATED,\"failed\":[$FAILED_JSON],\"total\":$TOTAL}"

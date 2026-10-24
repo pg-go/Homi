@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=homi
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=7
+PKG_RELEASE:=8
 PKGARCH:=all
 
 PKG_LICENSE:=MIT
@@ -42,6 +42,7 @@ define Package/homi/install
 	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-update-dashboard $(1)/usr/sbin/homi-update-dashboard
 	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-log $(1)/usr/sbin/homi-log
 	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-fetch-mmdb $(1)/usr/sbin/homi-fetch-mmdb
+	$(INSTALL_BIN) $(CURDIR)/files/usr/sbin/homi-update-rules $(1)/usr/sbin/homi-update-rules
 
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) $(CURDIR)/files/lib/upgrade/keep.d/homi $(1)/lib/upgrade/keep.d/homi

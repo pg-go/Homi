@@ -49,6 +49,12 @@ const callUpdateDashboard = rpc.declare({
     expect: { '': {} }
 });
 
+const callUpdateRules = rpc.declare({
+    object: 'luci.homi',
+    method: 'update_rules',
+    expect: { '': {} }
+});
+
 const callSetConfig = rpc.declare({
     object: 'luci.homi',
     method: 'set_config',
@@ -168,6 +174,10 @@ return baseclass.extend({
 
     updateDashboard: function () {
         return callUpdateDashboard();
+    },
+
+    updateRules: function () {
+        return callUpdateRules();
     },
 
     setConfig: function (path) {
