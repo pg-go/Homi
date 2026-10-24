@@ -11,7 +11,7 @@ emit() {
 	echo "$1"
 	echo "$1" > "$OUT"
 }
-[ -n "$CFG" ] && [ -f "$CFG" ] || { emit '{"updated":0,"failed":[],"total":0,"error":"no_config"}'; exit 1; }
+[ -n "$CFG" ] && [ -f "$CFG" ] || { emit '{"updated":0,"failed":[],"total":0,"error":"no_config"}'; homi-log "[App] 规则更新失败：请先上传配置文件"; exit 1; }
 
 CTL=$(yq '.external-controller // ""' "$CFG" 2>/dev/null)
 TLS=$(yq '.external-controller-tls // ""' "$CFG" 2>/dev/null)
@@ -25,7 +25,7 @@ else
 	SCHEME="http"
 	TLS_FLAG=""
 fi
-[ -n "$HOST" ] || { emit '{"updated":0,"failed":[],"total":0,"error":"not_configured"}'; exit 1; }
+[ -n "$HOST" ] || { emit '{"updated":0,"failed":[],"total":0,"error":"not_configured"}'; homi-log "[App] 规则更新失败：请先在配置文件中设置 external-controller"; exit 1; }
 # 0.0.0.0/:port → 127.0.0.1:port（本机调控制器走回环）
 case "$HOST" in
 	0.0.0.0:*) HOST="127.0.0.1:${HOST#0.0.0.0:}" ;;
@@ -40,11 +40,12 @@ else
 fi
 if [ $? -ne 0 ]; then
 	emit '{"updated":0,"failed":[],"total":0,"error":"not_running"}'
+	homi-log "[App] 规则更新失败：服务未运行或控制器不可达，请先启动服务"
 	exit 1
 fi
 
 NAMES=$(yq '.rule-providers // {} | keys | .[]' "$CFG" 2>/dev/null)
-[ -n "$NAMES" ] || { emit '{"updated":0,"failed":[],"total":0,"error":"no_providers"}'; exit 0; }
+[ -n "$NAMES" ] || { emit '{"updated":0,"failed":[],"total":0,"error":"no_providers"}'; homi-log "[App] 规则更新失败：当前配置没有规则提供者"; exit 0; }
 
 # 并行 PUT：子 shell 里直接写 curl，不调函数（避开某些 sh 里函数+后台组合的坑）
 TMPDIR=$(mktemp -d)
@@ -70,6 +71,7 @@ wait
 
 i=0
 UPDATED=0
+FAILED=0
 FAILED_JSON=""
 TOTAL=0
 for name in $NAMES; do
@@ -78,6 +80,7 @@ for name in $NAMES; do
 	if [ -f "$TMPDIR/$i.ok" ]; then
 		UPDATED=$((UPDATED + 1))
 	else
+		FAILED=$((FAILED + 1))
 		esc=$(printf '%s' "$name" | sed 's/\\/\\\\/g; s/"/\\"/g')
 		if [ -n "$FAILED_JSON" ]; then
 			FAILED_JSON="$FAILED_JSON,\"$esc\""
@@ -88,3 +91,5 @@ for name in $NAMES; do
 done
 rm -rf "$TMPDIR"
 emit "{\"updated\":$UPDATED,\"failed\":[$FAILED_JSON],\"total\":$TOTAL}"
+# 应用日志里记一行完成（前端轮询若因切页面而死，这行仍能保证日志里有结果，不再静默）
+homi-log "[App] 规则更新完成：成功 $UPDATED 个，失败 $FAILED 个，共 $TOTAL 个"
