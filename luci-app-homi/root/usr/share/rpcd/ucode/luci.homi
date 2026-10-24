@@ -272,14 +272,15 @@ const methods = {
 		}
 	},
 	/* 更新规则：后台触发 + 前端轮询结果。同步等脚本跑完那条路一直拿不到结果，
-	   改成触发后立即返回（不等待），脚本在后台跑、结果落盘，前端轮询落盘 JSON。 */
+	   改成触发后立即返回（不等待），脚本在后台跑、结果落盘，前端轮询落盘 JSON。
+	   注意：不用 nohup——该路由器 busybox 未编译 nohup（实测后台任务 exit 127），直接 & 后台即可。 */
 	update_rules: {
 		args: {},
 		call: function() {
 			const config_path = active_config();
 			const esc = replace(config_path, "'", "'\\''");
 			system(`rm -f /tmp/homi-update-rules.last.json 2>/dev/null`);
-			system(`nohup /usr/sbin/homi-update-rules '${esc}' >/dev/null 2>&1 &`);
+			system(`/usr/sbin/homi-update-rules '${esc}' >/dev/null 2>&1 &`);
 			return { success: true, started: true };
 		}
 	},
