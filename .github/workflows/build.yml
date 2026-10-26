@@ -47,7 +47,7 @@ jobs:
 
       - name: bundle
         run: |
-          # 24.10 产出 ipk，25.12 产出 apk；直接打包 SDK 原生产物
+          # 24.10 产出 ipk，25.12 出 apk；直接打包 SDK 原生产物
           if [ "${{ matrix.branch }}" = "openwrt-24.10" ]; then ext=ipk; else ext=apk; fi
           tar -c -z -f "homi-${{ matrix.arch }}-$ext.tar.gz" \
             -C "bin/packages/${{ matrix.arch }}/homi" .
@@ -69,6 +69,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: 读取当前 mihomo 版本
+        id: version
+        run: |
+          MIHOMO_VERSION=$(grep '^PKG_VERSION:=' mihomo/Makefile | sed 's/.*:=//')
+          echo "mihomo_version=$MIHOMO_VERSION" >> $GITHUB_OUTPUT
+          echo "当前 mihomo 版本: v$MIHOMO_VERSION"
+
       - name: download bundles
         uses: actions/download-artifact@v4
         with:
@@ -86,5 +96,7 @@ jobs:
           tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
           files: dist/*.tar.gz
           generate_release_notes: true
+          body: |
+            mihomo 版本：v${{ steps.version.outputs.mihomo_version }}
           # Release 已存在时重跑补传：同名文件直接覆盖
           overwrite_files: true
