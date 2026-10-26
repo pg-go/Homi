@@ -1,0 +1,47 @@
+name: check-upstream-mihomo
+
+# 每天检查一次上游 MetaCubeX/mihomo 的最新 release，
+# 有新版本时自动更新 mihomo/Makefile 的 PKG_VERSION 与 PKG_HASH 并推回 main。
+# 注意：只更新版本号，不自动触发构建；想出包时仍按原来方式手动跑 build workflow。
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: 检查上游并自动更新版本
+        run: |
+          set -e
+          LATEST_TAG=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          if ! echo "$LATEST_TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "上游版本获取失败（LATEST_TAG=$LATEST_TAG），退出"
+            exit 1
+          fi
+          CURRENT=$(grep '^PKG_VERSION:=' mihomo/Makefile | sed 's/.*:=//')
+          echo "上游最新: $LATEST_TAG，当前钉死: $CURRENT"
+          if [ "$LATEST_TAG" = "$CURRENT" ]; then
+            echo "已是最新，无需更新"
+            exit 0
+          fi
+          echo "发现新版本 v$LATEST_TAG，开始更新"
+          curl -sL -f "https://github.com/MetaCubeX/mihomo/archive/refs/tags/v${LATEST_TAG}.tar.gz" -o /tmp/mihomo.tar.gz
+          NEW_HASH=$(sha256sum /tmp/mihomo.tar.gz | awk '{print $1}')
+          echo "新哈希: $NEW_HASH"
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${LATEST_TAG}/" mihomo/Makefile
+          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=${NEW_HASH}/" mihomo/Makefile
+          grep -E '^PKG_VERSION:=|^PKG_HASH:=' mihomo/Makefile
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mihomo/Makefile
+          git commit -m "mihomo: bump to v${LATEST_TAG} (auto-update from upstream)"
+          git push
